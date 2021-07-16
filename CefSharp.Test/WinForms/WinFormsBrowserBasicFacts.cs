@@ -30,7 +30,94 @@ namespace CefSharp.Test.WinForms
                 browser.Size = new System.Drawing.Size(1024, 768);
                 browser.CreateControl();
 
-                await browser.LoadPageAsync();
+                await browser.LoadUrlAsync();
+
+                var mainFrame = browser.GetMainFrame();
+                Assert.True(mainFrame.IsValid);
+                Assert.Contains("www.google", mainFrame.Url);
+
+                output.WriteLine("Url {0}", mainFrame.Url);
+            }
+        }
+
+        [WinFormsFact]
+        public async Task CanSetBrowserSettingsDisableImageLoadingViaObjectFactory()
+        {
+            using (var browser = new ChromiumWebBrowser("www.google.com"))
+            {
+                var settings = Core.ObjectFactory.CreateBrowserSettings(true);
+                settings.ImageLoading = CefState.Disabled;
+                browser.BrowserSettings = settings;
+
+                browser.Size = new System.Drawing.Size(1024, 768);
+                browser.CreateControl();
+
+                await browser.LoadUrlAsync();
+
+                var mainFrame = browser.GetMainFrame();
+                Assert.True(mainFrame.IsValid);
+                Assert.Contains("www.google", mainFrame.Url);
+
+                output.WriteLine("Url {0}", mainFrame.Url);
+            }
+        }
+
+        [WinFormsFact]
+        public async Task CanSetBrowserSettingsDisableImageLoading()
+        {
+            using (var browser = new ChromiumWebBrowser("www.google.com"))
+            {
+                browser.BrowserSettings = new BrowserSettings(true)
+                {
+                    ImageLoading = CefState.Disabled
+                };
+
+                browser.Size = new System.Drawing.Size(1024, 768);
+                browser.CreateControl();
+
+                await browser.LoadUrlAsync();
+
+                var mainFrame = browser.GetMainFrame();
+                Assert.True(mainFrame.IsValid);
+                Assert.Contains("www.google", mainFrame.Url);
+
+                output.WriteLine("Url {0}", mainFrame.Url);
+            }
+        }
+
+        [WinFormsFact]
+        public async Task CanSetRequestContextViaRequestContextBuilder()
+        {
+            using (var browser = new ChromiumWebBrowser("www.google.com"))
+            {
+                var settings = Core.ObjectFactory.CreateBrowserSettings(true);
+                settings.ImageLoading = CefState.Disabled;
+                browser.RequestContext = RequestContext.Configure().Create();
+
+                browser.Size = new System.Drawing.Size(1024, 768);
+                browser.CreateControl();
+
+                await browser.LoadUrlAsync();
+
+                var mainFrame = browser.GetMainFrame();
+                Assert.True(mainFrame.IsValid);
+                Assert.Contains("www.google", mainFrame.Url);
+
+                output.WriteLine("Url {0}", mainFrame.Url);
+            }
+        }
+
+        [WinFormsFact]
+        public async Task CanSetRequestContext()
+        {
+            using (var browser = new ChromiumWebBrowser("www.google.com"))
+            {
+                browser.RequestContext = new RequestContext();
+
+                browser.Size = new System.Drawing.Size(1024, 768);
+                browser.CreateControl();
+
+                await browser.LoadUrlAsync();
 
                 var mainFrame = browser.GetMainFrame();
                 Assert.True(mainFrame.IsValid);

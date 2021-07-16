@@ -6,6 +6,8 @@
 # Update the .Net 4.5.2 csproj files using nuget.exe
 # Update the .Net Core csproj files modifying the xml file directly
 
+$CefVersion = '92.0.14'
+
 function RemoveEnsureNuGetPackageBuildImports
 {
     param([Parameter(Position = 0, ValueFromPipeline = $true)][string] $FileName)
@@ -21,20 +23,20 @@ function RemoveEnsureNuGetPackageBuildImports
 	}
 }
 
-$vcxprojFiles = @('CefSharp.Core\CefSharp.Core.vcxproj','CefSharp.BrowserSubprocess.Core\CefSharp.BrowserSubprocess.Core.vcxproj')
+$vcxprojFiles = @('CefSharp.Core.Runtime\CefSharp.Core.Runtime.vcxproj','CefSharp.BrowserSubprocess.Core\CefSharp.BrowserSubprocess.Core.vcxproj')
 
 foreach($file in $vcxprojFiles)
 {
-	..\nuget update $file -Id cef.sdk	
+	..\nuget update $file -Id cef.sdk -Version $CefVersion
 	
 	RemoveEnsureNuGetPackageBuildImports (Resolve-Path $file)
 }
 
-$vcxprojFiles = @('CefSharp.Core\CefSharp.Core.netcore.vcxproj', 'CefSharp.BrowserSubprocess.Core\CefSharp.BrowserSubprocess.Core.netcore.vcxproj')
+$vcxprojFiles = @('CefSharp.Core.Runtime\CefSharp.Core.Runtime.netcore.vcxproj', 'CefSharp.BrowserSubprocess.Core\CefSharp.BrowserSubprocess.Core.netcore.vcxproj')
 
 foreach($file in $vcxprojFiles)
 {
-	..\nuget update $file -Id cef.sdk	
+	..\nuget update $file -Id cef.sdk -Version $CefVersion
 	
 	RemoveEnsureNuGetPackageBuildImports (Resolve-Path $file)
 }
@@ -43,19 +45,20 @@ $csprojFiles = @('CefSharp.WinForms.Example\CefSharp.WinForms.Example.csproj','C
 
 foreach($file in $csprojFiles)
 {
-	..\nuget update $file -Id cef.redist.x64 -Id cef.redist.x86
+	..\nuget update $file -Id cef.redist.x64 -Version $CefVersion
+	..\nuget update $file -Id cef.redist.x86 -Version $CefVersion
 	
 	RemoveEnsureNuGetPackageBuildImports (Resolve-Path $file)
 }
 
-#Read the newly updated version number from the packages.CefSharp.Core.config
+#Read the newly updated version number from the packages.CefSharp.Core.Runtime.config
 
-$CefSharpCorePackagesXml = [xml](Get-Content (Resolve-Path 'CefSharp.Core\packages.CefSharp.Core.config'))
+$CefSharpCorePackagesXml = [xml](Get-Content (Resolve-Path 'CefSharp.Core.Runtime\packages.CefSharp.Core.Runtime.config'))
 $RedistVersion = $CefSharpCorePackagesXml.SelectSingleNode("//packages/package[@id='cef.sdk']/@version").value
 
 $netcorecsprojFiles = @('CefSharp.WinForms.Example\CefSharp.WinForms.Example.netcore.csproj','CefSharp.Wpf.Example\CefSharp.Wpf.Example.netcore.csproj','CefSharp.OffScreen.Example\CefSharp.OffScreen.Example.netcore.csproj', 'CefSharp.Test\CefSharp.Test.netcore.csproj')
 
-#Loop through the net core projects and update the package version number
+#Loop through the net core example projects and update the package version number
 
 foreach($file in $netcorecsprojFiles)
 {
@@ -64,11 +67,9 @@ foreach($file in $netcorecsprojFiles)
 	$xml.PreserveWhitespace = $true
 	$xml.Load($file)
 	
-	$packRefx86 = $xml.Project.ItemGroup.PackageReference | Where-Object {$_."Include" -eq "cef.redist.x86"}
-	$packRefx64 = $xml.Project.ItemGroup.PackageReference | Where-Object {$_."Include" -eq "cef.redist.x64"}
+	$packRef = $xml.Project.ItemGroup.PackageReference | Where-Object {$_."Include" -eq "chromiumembeddedframework.runtime"}
 	
-	$packRefx86.Version = $RedistVersion
-	$packRefx64.Version = $RedistVersion
+	$packRef.Version = $RedistVersion
 	
 	$xml.Save( $file )
 }

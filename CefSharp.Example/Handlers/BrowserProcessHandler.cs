@@ -9,7 +9,7 @@ using CefSharp.SchemeHandler;
 
 namespace CefSharp.Example.Handlers
 {
-    public class BrowserProcessHandler : IBrowserProcessHandler
+    public class BrowserProcessHandler : CefSharp.Handler.BrowserProcessHandler
     {
         /// <summary>
         /// The interval between calls to Cef.DoMessageLoopWork
@@ -20,11 +20,11 @@ namespace CefSharp.Example.Handlers
         /// </summary>
         protected const int ThirtyTimesPerSecond = 1000 / 30;  //30fps
 
-        void IBrowserProcessHandler.OnContextInitialized()
+        protected override void OnContextInitialized()
         {
             //The Global CookieManager has been initialized, you can now set cookies
             var cookieManager = Cef.GetGlobalCookieManager();
-            cookieManager.SetSupportedSchemes(new string[] { "custom" }, true);
+            
             if (cookieManager.SetCookie("custom://cefsharp/home.html", new Cookie
             {
                 Name = "CefSharpTestCookie",
@@ -97,7 +97,7 @@ namespace CefSharp.Example.Handlers
 #if !NETCOREAPP
                     @"..\..\..\..\CefSharp.Example\Resources";
 #else
-                    @"..\..\..\..\..\CefSharp.Example\Resources";
+                    @"..\..\..\..\..\..\CefSharp.Example\Resources";
 #endif
                 var folderSchemeHandlerExample = new FolderSchemeHandlerFactory(rootFolder: cefSharpExampleResourcesFolder,
                                                                         hostName: "cefsharp.example", //Optional param no hostname checking if null
@@ -105,27 +105,6 @@ namespace CefSharp.Example.Handlers
 
                 context.RegisterSchemeHandlerFactory("https", "cefsharp.example", folderSchemeHandlerExample);
             }
-        }
-
-        void IBrowserProcessHandler.OnScheduleMessagePumpWork(long delay)
-        {
-            //If the delay is greater than the Maximum then use ThirtyTimesPerSecond
-            //instead - we do this to achieve a minimum number of FPS
-            if (delay > ThirtyTimesPerSecond)
-            {
-                delay = ThirtyTimesPerSecond;
-            }
-            OnScheduleMessagePumpWork((int)delay);
-        }
-
-        protected virtual void OnScheduleMessagePumpWork(int delay)
-        {
-            //TODO: Schedule work on the UI thread - call Cef.DoMessageLoopWork
-        }
-
-        public virtual void Dispose()
-        {
-
         }
     }
 }

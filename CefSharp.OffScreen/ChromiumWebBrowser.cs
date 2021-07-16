@@ -26,7 +26,7 @@ namespace CefSharp.OffScreen
         /// <summary>
         /// The managed cef browser adapter
         /// </summary>
-        private ManagedCefBrowserAdapter managedCefBrowserAdapter;
+        private IBrowserAdapter managedCefBrowserAdapter;
 
         /// <summary>
         /// Size of the Chromium viewport.
@@ -36,20 +36,15 @@ namespace CefSharp.OffScreen
         private Size size = new Size(1366, 768);
 
         /// <summary>
-        /// The browser
-        /// </summary>
-        private IBrowser browser;
-
-        /// <summary>
         /// Flag to guard the creation of the underlying offscreen browser - only one instance can be created
         /// </summary>
         private bool browserCreated;
 
         /// <summary>
-        /// The value for disposal, if it's 1 (one) then this instance is either disposed
-        /// or in the process of getting disposed
+        /// Action which is called immediately before the <see cref="BrowserInitialized"/> event after the
+        /// uderlying Chromium Embedded Framework (CEF) browser has been created.
         /// </summary>
-        private int disposeSignaled;
+        private Action<IBrowser> onAfterBrowserCreatedDelegate;
 
         /// <summary>
         /// Gets a value indicating whether this instance is disposed.
@@ -162,28 +157,46 @@ namespace CefSharp.OffScreen
         /// <summary>
         /// Create a new OffScreen Chromium Browser. If you use <see cref="CefSharp.JavascriptBinding.JavascriptBindingSettings.LegacyBindingEnabled"/> = true then you must
         /// set <paramref name="automaticallyCreateBrowser"/> to false and call <see cref="CreateBrowser"/> after the objects are registered.
+        /// The underlying Chromium Embedded Framework(CEF) Browser is created asynchronouly, to subscribe to the <see cref="BrowserInitialized"/> event it is recommended
+        /// that you set <paramref name="automaticallyCreateBrowser"/> to false, subscribe to the event and then call <see cref="CreateBrowser(IWindowInfo, IBrowserSettings)"/>
+        /// to ensure you are subscribe to the event before it's fired (Issue https://github.com/cefsharp/CefSharp/issues/3552).
         /// </summary>
         /// <param name="html">html string to be initially loaded in the browser.</param>
         /// <param name="browserSettings">The browser settings to use. If null, the default settings are used.</param>
         /// <param name="requestContext">See <see cref="RequestContext" /> for more details. Defaults to null</param>
         /// <param name="automaticallyCreateBrowser">automatically create the underlying Browser</param>
+        /// <param name="onAfterBrowserCreated">
+        /// Use as an alternative to the <see cref="BrowserInitialized"/> event. If the underlying Chromium Embedded Framework (CEF) browser is created successfully,
+        /// this action is guranteed to be called after the browser created where as the <see cref="BrowserInitialized"/> event may be called before
+        /// you have a chance to subscribe to the event as the CEF Browser is created async. (Issue https://github.com/cefsharp/CefSharp/issues/3552).
+        /// </param>
         /// <exception cref="System.InvalidOperationException">Cef::Initialize() failed</exception>
-        public ChromiumWebBrowser(HtmlString html, BrowserSettings browserSettings = null,
-            IRequestContext requestContext = null, bool automaticallyCreateBrowser = true) : this(html.ToDataUriString(), browserSettings, requestContext, automaticallyCreateBrowser)
+        public ChromiumWebBrowser(HtmlString html, IBrowserSettings browserSettings = null,
+            IRequestContext requestContext = null, bool automaticallyCreateBrowser = true,
+            Action<IBrowser> onAfterBrowserCreated = null) : this(html.ToDataUriString(), browserSettings, requestContext, automaticallyCreateBrowser, onAfterBrowserCreated)
         {
         }
 
         /// <summary>
         /// Create a new OffScreen Chromium Browser. If you use <see cref="CefSharp.JavascriptBinding.JavascriptBindingSettings.LegacyBindingEnabled"/> = true then you must
         /// set <paramref name="automaticallyCreateBrowser"/> to false and call <see cref="CreateBrowser"/> after the objects are registered.
+        /// The underlying Chromium Embedded Framework(CEF) Browser is created asynchronouly, to subscribe to the <see cref="BrowserInitialized"/> event it is recommended
+        /// that you set <paramref name="automaticallyCreateBrowser"/> to false, subscribe to the event and then call <see cref="CreateBrowser(IWindowInfo, IBrowserSettings)"/>
+        /// to ensure you are subscribe to the event before it's fired (Issue https://github.com/cefsharp/CefSharp/issues/3552).
         /// </summary>
         /// <param name="address">Initial address (url) to load</param>
         /// <param name="browserSettings">The browser settings to use. If null, the default settings are used.</param>
         /// <param name="requestContext">See <see cref="RequestContext" /> for more details. Defaults to null</param>
         /// <param name="automaticallyCreateBrowser">automatically create the underlying Browser</param>
+        /// <param name="onAfterBrowserCreated">
+        /// Use as an alternative to the <see cref="BrowserInitialized"/> event. If the underlying Chromium Embedded Framework (CEF) browser is created successfully,
+        /// this action is guranteed to be called after the browser created where as the <see cref="BrowserInitialized"/> event may be called before
+        /// you have a chance to subscribe to the event as the CEF Browser is created async. (Issue https://github.com/cefsharp/CefSharp/issues/3552).
+        /// </param>
         /// <exception cref="System.InvalidOperationException">Cef::Initialize() failed</exception>
-        public ChromiumWebBrowser(string address = "", BrowserSettings browserSettings = null,
-            IRequestContext requestContext = null, bool automaticallyCreateBrowser = true)
+        public ChromiumWebBrowser(string address = "", IBrowserSettings browserSettings = null,
+            IRequestContext requestContext = null, bool automaticallyCreateBrowser = true,
+            Action<IBrowser> onAfterBrowserCreated = null)
         {
             if (!Cef.IsInitialized)
             {
@@ -191,7 +204,7 @@ namespace CefSharp.OffScreen
 
                 if (!Cef.Initialize(settings))
                 {
-                    throw new InvalidOperationException("Cef::Initialize() failed");
+                    throw new InvalidOperationException(CefInitializeFailedErrorMessage);
                 }
             }
 
@@ -199,8 +212,9 @@ namespace CefSharp.OffScreen
 
             Cef.AddDisposable(this);
             Address = address;
+            onAfterBrowserCreatedDelegate = onAfterBrowserCreated;
 
-            managedCefBrowserAdapter = new ManagedCefBrowserAdapter(this, true);
+            managedCefBrowserAdapter = ManagedCefBrowserAdapter.Create(this, true);
 
             if (automaticallyCreateBrowser)
             {
@@ -261,7 +275,7 @@ namespace CefSharp.OffScreen
 
                 // Release reference to handlers, except LifeSpanHandler which is done after Disposing
                 // ManagedCefBrowserAdapter otherwise the ILifeSpanHandler.DoClose will not be invoked.
-                this.SetHandlersToNullExceptLifeSpan();
+                FreeHandlersExceptLifeSpan();
 
                 browser = null;
 
@@ -285,7 +299,7 @@ namespace CefSharp.OffScreen
         /// <param name="windowInfo">Window information used when creating the browser</param>
         /// <param name="browserSettings">Browser initialization settings</param>
         /// <exception cref="System.Exception">An instance of the underlying offscreen browser has already been created, this method can only be called once.</exception>
-        public void CreateBrowser(IWindowInfo windowInfo = null, BrowserSettings browserSettings = null)
+        public void CreateBrowser(IWindowInfo windowInfo = null, IBrowserSettings browserSettings = null)
         {
             if (browserCreated)
             {
@@ -296,23 +310,75 @@ namespace CefSharp.OffScreen
 
             if (browserSettings == null)
             {
-                browserSettings = new BrowserSettings(frameworkCreated: true);
+                browserSettings = Core.ObjectFactory.CreateBrowserSettings(autoDispose: true);
             }
 
             if (windowInfo == null)
             {
-                windowInfo = new WindowInfo();
+                windowInfo = Core.ObjectFactory.CreateWindowInfo();
                 windowInfo.SetAsWindowless(IntPtr.Zero);
             }
 
-            managedCefBrowserAdapter.CreateBrowser(windowInfo, browserSettings, (RequestContext)RequestContext, Address);
+            managedCefBrowserAdapter.CreateBrowser(windowInfo, browserSettings, RequestContext, Address);
 
             //Dispose of BrowserSettings if we created it, if user created then they're responsible
-            if (browserSettings.FrameworkCreated)
+            if (browserSettings.AutoDispose)
             {
                 browserSettings.Dispose();
             }
             browserSettings = null;
+        }
+
+        /// <summary>
+        /// Create the underlying CEF browser. The address and request context passed into the constructor
+        /// will be used. If a <see cref="Action{IBrowser}"/> delegate was passed
+        /// into the constructor it will not be called as this method overrides that value internally.
+        /// </summary>
+        /// <param name="windowInfo">Window information used when creating the browser</param>
+        /// <param name="browserSettings">Browser initialization settings</param>
+        /// <exception cref="System.Exception">An instance of the underlying offscreen browser has already been created, this method can only be called once.</exception>
+        /// <returns>
+        /// A <see cref="Task{IBrowser}"/> that represents the creation of the underlying CEF browser (<see cref="IBrowser"/> instance.
+        /// When the task completes then the CEF Browser will have been created and you can start performing basic tasks.
+        /// Note that the control's <see cref="BrowserInitialized"/> event will be invoked after this task completes.
+        /// </returns>
+        public Task<IBrowser> CreateBrowserAsync(IWindowInfo windowInfo = null, IBrowserSettings browserSettings = null)
+        {
+            if (browserCreated)
+            {
+                throw new Exception("An instance of the underlying offscreen browser has already been created, this method can only be called once.");
+            }
+
+            browserCreated = true;
+
+            if (browserSettings == null)
+            {
+                browserSettings = Core.ObjectFactory.CreateBrowserSettings(autoDispose: true);
+            }
+
+            if (windowInfo == null)
+            {
+                windowInfo = Core.ObjectFactory.CreateWindowInfo();
+                windowInfo.SetAsWindowless(IntPtr.Zero);
+            }
+
+            var tcs = new TaskCompletionSource<IBrowser>();
+
+            onAfterBrowserCreatedDelegate = new Action<IBrowser>(b =>
+            {
+                tcs.TrySetResultAsync(b);
+            });
+
+            managedCefBrowserAdapter.CreateBrowser(windowInfo, browserSettings, RequestContext, Address);
+
+            //Dispose of BrowserSettings if we created it, if user created then they're responsible
+            if (browserSettings.AutoDispose)
+            {
+                browserSettings.Dispose();
+            }
+            browserSettings = null;
+
+            return tcs.Task;
         }
 
         /// <summary>
@@ -399,7 +465,7 @@ namespace CefSharp.OffScreen
         /// It is your responsibility to dispose the returned Bitmap.
         /// The bitmap size is determined by the Size property set earlier.
         /// </summary>
-        /// <param name="ignoreExistingScreenshot">Ignore existing bitmap (if any) and return the next avaliable bitmap</param>
+        /// <param name="ignoreExistingScreenshot">Ignore existing bitmap (if any) and return the next available bitmap</param>
         /// <param name="blend">Choose which bitmap to retrieve, choose <see cref="PopupBlending.Blend"/> for a merged bitmap.</param>
         /// <returns>Task&lt;Bitmap&gt;.</returns>
         public Task<Bitmap> ScreenshotAsync(bool ignoreExistingScreenshot = false, PopupBlending blend = PopupBlending.Main)
@@ -661,12 +727,9 @@ namespace CefSharp.OffScreen
         /// Called when [after browser created].
         /// </summary>
         /// <param name="browser">The browser.</param>
-        void IWebBrowserInternal.OnAfterBrowserCreated(IBrowser browser)
+        partial void OnAfterBrowserCreated(IBrowser browser)
         {
-            this.browser = browser;
-
-            Interlocked.Exchange(ref browserInitialized, 1);
-
+            onAfterBrowserCreatedDelegate?.Invoke(browser);
             BrowserInitialized?.Invoke(this, EventArgs.Empty);
         }
 

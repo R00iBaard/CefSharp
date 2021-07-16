@@ -3,8 +3,13 @@
 // Use of this source code is governed by a BSD-style license that can be found in the LICENSE file.
 
 using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Drawing.Imaging;
+using System.IO;
 using System.Threading.Tasks;
 using CefSharp.DevTools.Browser;
+using CefSharp.DevTools.Emulation;
 using CefSharp.DevTools.Network;
 using CefSharp.Example;
 using CefSharp.OffScreen;
@@ -24,6 +29,31 @@ namespace CefSharp.Test.DevTools
         {
             this.fixture = fixture;
             this.output = output;
+        }
+
+        [Fact]
+        public async Task CanCaptureScreenshot()
+        {
+            using (var browser = new ChromiumWebBrowser("www.google.com"))
+            {
+                await browser.LoadUrlAsync();
+
+                using (var devToolsClient = browser.GetDevToolsClient())
+                {
+                    var response = await devToolsClient.Page.CaptureScreenshotAsync();
+
+                    Assert.NotNull(response.Data);
+                    Assert.NotEmpty(response.Data);
+
+                    var image = Image.FromStream(new MemoryStream(response.Data));
+                    var size = browser.Size;
+
+                    Assert.NotNull(image);
+                    Assert.Equal(ImageFormat.Png, image.RawFormat);
+                    Assert.Equal(size.Width, image.Width);
+                    Assert.Equal(size.Height, image.Height);
+                }
+            }
         }
 
         [Fact]
@@ -47,13 +77,12 @@ namespace CefSharp.Test.DevTools
             Assert.Equal("fullscreen", (string)dict["windowState"]);
         }
 
-
         [Fact]
         public async Task CanGetDevToolsProtocolVersion()
         {
             using (var browser = new ChromiumWebBrowser("www.google.com"))
             {
-                await browser.LoadPageAsync();
+                await browser.LoadUrlAsync();
 
                 using (var devToolsClient = browser.GetDevToolsClient())
                 {
@@ -70,11 +99,11 @@ namespace CefSharp.Test.DevTools
         }
 
         [Fact]
-        public async Task CanCanEmulate()
+        public async Task CanEmulationCanEmulate()
         {
             using (var browser = new ChromiumWebBrowser("www.google.com"))
             {
-                await browser.LoadPageAsync();
+                await browser.LoadUrlAsync();
 
                 using (var devToolsClient = browser.GetDevToolsClient())
                 {
@@ -90,7 +119,7 @@ namespace CefSharp.Test.DevTools
         {
             using (var browser = new ChromiumWebBrowser("www.google.com"))
             {
-                await browser.LoadPageAsync();
+                await browser.LoadUrlAsync();
 
                 using (var devToolsClient = browser.GetDevToolsClient())
                 {
@@ -113,7 +142,7 @@ namespace CefSharp.Test.DevTools
         {
             using (var browser = new ChromiumWebBrowser("www.google.com"))
             {
-                await browser.LoadPageAsync();
+                await browser.LoadUrlAsync();
 
                 using (var devToolsClient = browser.GetDevToolsClient())
                 {
@@ -124,5 +153,172 @@ namespace CefSharp.Test.DevTools
             }
         }
 
+        [Fact]
+        public async Task CanUseMultipleDevToolsClientInstancesPerBrowser()
+        {
+            using (var browser = new ChromiumWebBrowser("www.google.com"))
+            {
+                await browser.LoadUrlAsync();
+
+                using (var devToolsClient = browser.GetDevToolsClient())
+                {
+                    var response = await devToolsClient.Browser.GetVersionAsync();
+                    var jsVersion = response.JsVersion;
+                    var revision = response.Revision;
+
+                    Assert.NotNull(jsVersion);
+                    Assert.NotNull(revision);
+
+                    output.WriteLine("DevTools Revision {0}", revision);
+                }
+
+                using (var devToolsClient = browser.GetDevToolsClient())
+                {
+                    var response = await devToolsClient.Browser.GetVersionAsync();
+                    var jsVersion = response.JsVersion;
+                    var revision = response.Revision;
+
+                    Assert.NotNull(jsVersion);
+                    Assert.NotNull(revision);
+
+                    output.WriteLine("DevTools Revision {0}", revision);
+                }
+            }
+        }
+
+        [Fact]
+        public async Task CanSetUserAgentOverride()
+        {
+            using (var browser = new ChromiumWebBrowser("www.google.com"))
+            {
+                await browser.LoadUrlAsync();
+
+                using (var devToolsClient = browser.GetDevToolsClient())
+                {
+                    var brandsList = new List<UserAgentBrandVersion>();
+                    var uab = new UserAgentBrandVersion
+                    {
+                        Brand = "Google Chrome",
+                        Version = "89"
+                    };
+                    brandsList.Add(uab);
+
+                    var uab2 = new UserAgentBrandVersion
+                    {
+                        Brand = "Chromium",
+                        Version = "89"
+                    };
+                    brandsList.Add(uab2);
+
+                    var ua = new UserAgentMetadata
+                    {
+                        Brands = brandsList,
+                        Architecture = "arm",
+                        Model = "Nexus 7",
+                        Platform = "Android",
+                        PlatformVersion = "6.0.1",
+                        FullVersion = "89.0.4389.114",
+                        Mobile = true
+                    };
+
+                    await devToolsClient.Emulation.SetUserAgentOverrideAsync("Mozilla/5.0 (Linux; Android 6.0.1; Nexus 7 Build/MOB30X) AppleWebKit/5(KHTML,likeGeckoChrome/89.0.4389.114Safari/537.36", null, null, ua);
+                }
+
+                var userAgent = await browser.EvaluateScriptAsync("navigator.userAgent");
+                Assert.True(userAgent.Success);
+                Assert.Contains("Mozilla/5.0 (Linux; Android 6.0.1; Nexus 7 Build/MOB30X) AppleWebKit/5(KHTML,likeGeckoChrome/89.0.4389.114Safari/537.36", Assert.IsType<string>(userAgent.Result));
+
+                var brands = await browser.EvaluateScriptAsync("navigator.userAgentData.brands");
+                Assert.True(brands.Success);
+                dynamic brandsResult = brands.Result;
+                Assert.Collection((IEnumerable<dynamic>)brandsResult,
+                    (dynamic d) =>
+                    {
+                        Assert.Equal("Google Chrome", d.brand);
+                        Assert.Equal("89", d.version);
+                    },
+                    (dynamic d) =>
+                    {
+                        Assert.Equal("Chromium", d.brand);
+                        Assert.Equal("89", d.version);
+                    }
+                );
+
+                var highEntropyValues = await browser.EvaluateScriptAsPromiseAsync("return navigator.userAgentData.getHighEntropyValues(['architecture','model','platform','platformVersion','uaFullVersion'])");
+                Assert.True(highEntropyValues.Success);
+                dynamic highEntropyValuesResult = highEntropyValues.Result;
+                Assert.Equal("arm", highEntropyValuesResult.architecture);
+                Assert.Equal("Nexus 7", highEntropyValuesResult.model);
+                Assert.Equal("Android", highEntropyValuesResult.platform);
+                Assert.Equal("6.0.1", highEntropyValuesResult.platformVersion);
+                Assert.Equal("89.0.4389.114", highEntropyValuesResult.uaFullVersion);
+            }
+        }
+
+        [Fact]
+        public async Task CanSetExtraHTTPHeaders()
+        {
+            using (var browser = new ChromiumWebBrowser("about:blank", automaticallyCreateBrowser: false))
+            {
+                await browser.CreateBrowserAsync();
+
+                RequestWillBeSentEventArgs requestWillBeSentEventArgs = null;
+                using (var devToolsClient = browser.GetDevToolsClient())
+                {
+                    var extraHeaders = new Headers();
+                    extraHeaders.SetCommaSeparatedValues("TEST", "0");
+                    extraHeaders.AppendCommaSeparatedValues("test", " 1 ", "\" 2 \"");
+                    extraHeaders.AppendCommaSeparatedValues("Test", " 2,5 ");
+
+                    await devToolsClient.Network.SetExtraHTTPHeadersAsync(extraHeaders);
+
+                    devToolsClient.Network.RequestWillBeSent += (sender, args) =>
+                    {
+                        if (requestWillBeSentEventArgs == null)
+                        {
+                            requestWillBeSentEventArgs = args;
+                        }
+                    };
+
+                    // enable events
+                    await devToolsClient.Network.EnableAsync();
+
+                    await browser.LoadUrlAsync("www.google.com");
+                }
+
+                Assert.NotNull(requestWillBeSentEventArgs);
+                Assert.NotEmpty(requestWillBeSentEventArgs.RequestId);
+                Assert.NotEqual(0, requestWillBeSentEventArgs.Timestamp);
+                Assert.NotEqual(0, requestWillBeSentEventArgs.WallTime);
+                Assert.NotNull(requestWillBeSentEventArgs.Request);
+                Assert.True(requestWillBeSentEventArgs.Request.Headers.TryGetValues("TeSt", out var values));
+                Assert.Collection(values,
+                    v => Assert.Equal("0", v),
+                    v => Assert.Equal("1", v),
+                    v => Assert.Equal(" 2 ", v),
+                    v => Assert.Equal(" 2,5 ", v)
+                );
+            }
+        }
+
+        [Fact]
+        public async Task ExecuteDevToolsMethodThrowsExceptionWithInvalidMethod()
+        {
+            using (var browser = new ChromiumWebBrowser("www.google.com"))
+            {
+                await browser.LoadUrlAsync();
+
+                using (var devToolsClient = browser.GetDevToolsClient())
+                {
+                    var ex = await Assert.ThrowsAsync<CefSharp.DevTools.DevToolsClientException>(
+                        () => devToolsClient.ExecuteDevToolsMethodAsync("methoddoesnotexist"));
+
+                    Assert.NotNull(ex.Response);
+                    Assert.NotEqual(0, ex.Response.MessageId);
+                    Assert.NotEqual(0, ex.Response.Code);
+                    Assert.NotNull(ex.Response.Message);
+                }
+            }
+        }
     }
 }

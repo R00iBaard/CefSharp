@@ -20,17 +20,19 @@ namespace CefSharp.DevTools
     /// </summary>
     public partial class DevToolsClient : IDevToolsMessageObserver, IDevToolsClient
     {
+        //TODO: Message Id is now global, limits the number of messages to int.MaxValue
+        //Needs to be unique and incrementing per browser with the option to have multiple
+        //DevToolsClient instances per browser.
+        private static int lastMessageId = 0;
+
         private readonly ConcurrentDictionary<int, SyncContextTaskCompletionSource<DevToolsMethodResponse>> queuedCommandResults = new ConcurrentDictionary<int, SyncContextTaskCompletionSource<DevToolsMethodResponse>>();
-        private int lastMessageId;
         private IBrowser browser;
         private IRegistration devToolsRegistration;
         private bool devToolsAttached;
         private SynchronizationContext syncContext;
 
-        /// <summary>
-        /// DevToolsEvent
-        /// </summary>
-        public EventHandler<DevToolsEventArgs> DevToolsEvent;
+        /// <inheritdoc/>
+        public event EventHandler<DevToolsEventArgs> DevToolsEvent;
 
         /// <summary>
         /// Capture the current <see cref="SynchronizationContext"/> so
@@ -66,7 +68,6 @@ namespace CefSharp.DevTools
         {
             this.browser = browser;
 
-            lastMessageId = browser.Identifier * 100000;
             CaptureSyncContext = true;
         }
 
@@ -150,6 +151,7 @@ namespace CefSharp.DevTools
             return await taskCompletionSource.Task;
         }
 
+        /// <inheritdoc/>
         void IDisposable.Dispose()
         {
             DevToolsEvent = null;
@@ -158,16 +160,19 @@ namespace CefSharp.DevTools
             browser = null;
         }
 
+        /// <inheritdoc/>
         void IDevToolsMessageObserver.OnDevToolsAgentAttached(IBrowser browser)
         {
             devToolsAttached = true;
         }
 
+        /// <inheritdoc/>
         void IDevToolsMessageObserver.OnDevToolsAgentDetached(IBrowser browser)
         {
             devToolsAttached = false;
         }
 
+        /// <inheritdoc/>
         void IDevToolsMessageObserver.OnDevToolsEvent(IBrowser browser, string method, Stream parameters)
         {
             var evt = DevToolsEvent;
@@ -185,11 +190,13 @@ namespace CefSharp.DevTools
             }
         }
 
+        /// <inheritdoc/>
         bool IDevToolsMessageObserver.OnDevToolsMessage(IBrowser browser, Stream message)
         {
             return false;
         }
 
+        /// <inheritdoc/>
         void IDevToolsMessageObserver.OnDevToolsMethodResult(IBrowser browser, int messageId, bool success, Stream result)
         {
             var uiThread = CefThread.CurrentlyOnUiThread;
@@ -223,7 +230,7 @@ namespace CefSharp.DevTools
                 {
                     execute = () =>
                     {
-                        var errorObj = methodResult.DeserializeJson<DevToolsDomainErrorResponse>();
+                        var errorObj = methodResult.DeserializeJson<DevToolsDomainErrorResponse>(ignoreSuccess: true);
                         errorObj.MessageId = messageId;
 
                         //Make sure continuation runs on Thread Pool
@@ -244,6 +251,39 @@ namespace CefSharp.DevTools
                     }), null);
                 }
             }
+        }
+
+        /// <summary>
+        /// Deserialize the JSON string into a .Net object.
+        /// For .Net Core/.Net 5.0 uses System.Text.Json
+        /// for .Net 4.5.2 uses System.Runtime.Serialization.Json
+        /// </summary>
+        /// <typeparam name="T">Object type</typeparam>
+        /// <param name="json">JSON</param>
+        /// <returns>object of type <typeparamref name="T"/></returns>
+        public static T DeserializeJson<T>(string json)
+        {
+#if NETCOREAPP
+            var options = new System.Text.Json.JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+                IgnoreNullValues = true,
+            };
+
+            options.Converters.Add(new CefSharp.Internals.Json.JsonEnumConverterFactory());
+
+            return System.Text.Json.JsonSerializer.Deserialize<T>(json, options);
+#else
+            var bytes = Encoding.UTF8.GetBytes(json);
+            using (var ms = new MemoryStream(bytes))
+            {
+                var settings = new System.Runtime.Serialization.Json.DataContractJsonSerializerSettings();
+                settings.UseSimpleDictionaryFormat = true;
+
+                var dcs = new System.Runtime.Serialization.Json.DataContractJsonSerializer(typeof(T), settings);
+                return (T)dcs.ReadObject(ms);
+            }
+#endif
         }
     }
 }

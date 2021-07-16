@@ -4,8 +4,10 @@
 
 using System.Diagnostics;
 using System.Threading.Tasks;
+using CefSharp.Event;
 using CefSharp.Example;
 using CefSharp.Example.JavascriptBinding;
+using CefSharp.Internals;
 using CefSharp.OffScreen;
 using Xunit;
 using Xunit.Abstractions;
@@ -104,7 +106,7 @@ namespace CefSharp.Test.JavascriptBinding
         {
             using (var browser = new ChromiumWebBrowser(CefExample.BindingApiCustomObjectNameTestUrl))
             {
-                await browser.LoadPageAsync();
+                await browser.LoadUrlAsync();
 
                 //We'll execute twice using the different cased (camelcase naming and standard)
                 var response = await browser.EvaluateScriptAsync("CefSharp.IsObjectCached('doesntexist')");
@@ -125,16 +127,66 @@ namespace CefSharp.Test.JavascriptBinding
             using (var browser = new ChromiumWebBrowser(CefExample.BindingApiCustomObjectNameTestUrl, automaticallyCreateBrowser: false))
             {
                 var settings = browser.JavascriptObjectRepository.Settings;
-                settings.JavascriptBindingApiGlobalObjectName = "customApi";
+                settings.JavascriptBindingApiGlobalObjectName = "bindingApiObject";
 
                 //To modify the settings we need to defer browser creation slightly
                 browser.CreateBrowser();
 
-                await browser.LoadPageAsync();
+                await browser.LoadUrlAsync();
 
-                var result = await browser.EvaluateScriptAsync("customApi.isObjectCached('doesntexist') === false");
+                var result = await browser.EvaluateScriptAsync("bindingApiObject.isObjectCached('doesntexist') === false");
 
                 Assert.True(result.Success);
+            }
+        }
+
+        [Fact]
+        public async Task JsBindingGlobalApiDisabled()
+        {
+            using (var browser = new ChromiumWebBrowser(CefExample.BindingApiCustomObjectNameTestUrl, automaticallyCreateBrowser: false))
+            {
+                var settings = browser.JavascriptObjectRepository.Settings;
+                settings.JavascriptBindingApiEnabled = false;
+
+                //To modify the settings we need to defer browser creation slightly
+                browser.CreateBrowser();
+
+                var loadResponse = await browser.LoadUrlAsync();
+
+                Assert.True(loadResponse.Success);
+
+                var response1 = await browser.EvaluateScriptAsync("typeof window.cefSharp === 'undefined'");
+                var response2 = await browser.EvaluateScriptAsync("typeof window.CefSharp === 'undefined'");
+
+                Assert.True(response1.Success);
+                Assert.True((bool)response1.Result);
+
+                Assert.True(response2.Success);
+                Assert.True((bool)response2.Result);
+            }
+        }
+
+        [Fact]
+        public async Task JsBindingGlobalApiEnabled()
+        {
+            using (var browser = new ChromiumWebBrowser(CefExample.BindingApiCustomObjectNameTestUrl, automaticallyCreateBrowser: false))
+            {
+                var settings = browser.JavascriptObjectRepository.Settings;
+                settings.JavascriptBindingApiEnabled = true;
+
+                //To modify the settings we need to defer browser creation slightly
+                browser.CreateBrowser();
+
+                await browser.LoadUrlAsync();
+
+                var response1 = await browser.EvaluateScriptAsync("typeof window.cefSharp === 'undefined'");
+                var response2 = await browser.EvaluateScriptAsync("typeof window.CefSharp === 'undefined'");
+
+                Assert.True(response1.Success);
+                Assert.False((bool)response1.Result);
+
+                Assert.True(response2.Success);
+                Assert.False((bool)response2.Result);
             }
         }
 
@@ -145,7 +197,7 @@ namespace CefSharp.Test.JavascriptBinding
         {
             using (var browser = new ChromiumWebBrowser(CefExample.BindingApiCustomObjectNameTestUrl))
             {
-                await browser.LoadPageAsync();
+                await browser.LoadUrlAsync();
 
                 var result = await browser.EvaluateScriptAsync(script);
 
@@ -155,6 +207,27 @@ namespace CefSharp.Test.JavascriptBinding
                 {
                     Assert.Equal("CefSharp.BrowserSubprocess", process.ProcessName);
                 }
+            }
+        }
+
+        [Fact]
+        //Issue https://github.com/cefsharp/CefSharp/issues/3470
+        //Verify workaround passes
+        public async Task CanCallCefSharpBindObjectAsyncWithoutParams()
+        {
+            using (var browser = new ChromiumWebBrowser(CefExample.HelloWorldUrl))
+            {
+                await browser.LoadUrlAsync();
+
+                //TODO: See if we can avoid GetAwaiter().GetResult()
+                var evt = Assert.Raises<JavascriptBindingEventArgs>(
+                    x => browser.JavascriptObjectRepository.ResolveObject += x,
+                    y => browser.JavascriptObjectRepository.ResolveObject -= y,
+                    () => { browser.EvaluateScriptAsync("CefSharp.BindObjectAsync();").GetAwaiter().GetResult(); });
+
+                Assert.NotNull(evt);
+
+                Assert.Equal(JavascriptObjectRepository.AllObjects, evt.Arguments.ObjectName);
             }
         }
     }

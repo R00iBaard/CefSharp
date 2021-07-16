@@ -13,7 +13,7 @@ namespace CefSharp.DevTools
     public class DevToolsEventArgs : EventArgs
     {
         /// <summary>
-        /// Method
+        /// Event Name
         /// </summary>
         public string EventName { get; private set; }
 
@@ -26,6 +26,11 @@ namespace CefSharp.DevTools
         {
             EventName = eventName;
             ParametersAsJsonString = paramsAsJsonString;
+        }
+
+        internal T DeserializeJson<T>()
+        {
+            return DevToolsClient.DeserializeJson<T>(ParametersAsJsonString);
         }
     }
 }

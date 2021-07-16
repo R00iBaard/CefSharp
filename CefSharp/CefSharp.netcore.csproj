@@ -27,6 +27,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="System.Text.Json" Version="5.0.0" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Don't include items from the "bin" and "obj" folders used by the .NET Framework projects. -->
     <EmbeddedResource Remove="Internals\Wcf\**" />
     <None Remove="bin/**/*.*" />
@@ -37,6 +42,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Remove="CefRuntime.cs" />
+    <Compile Remove="DevTools\DevToolsClient.Generated.cs" />
     <Compile Remove="Internals\Partial\ChromiumWebBrowser.Partial.cs" />
   </ItemGroup>
 

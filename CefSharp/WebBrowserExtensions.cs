@@ -7,6 +7,7 @@ using System.Collections.Specialized;
 using System.Globalization;
 using System.IO;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using CefSharp.Internals;
 using CefSharp.Web;
@@ -229,6 +230,124 @@ namespace CefSharp
         }
 
         /// <summary>
+        /// Download the file at url using <see cref="IDownloadHandler"/>. 
+        /// </summary>
+        /// <param name="browser">The ChromiumWebBrowser instance this method extends.</param>
+        /// <param name="url">url to download</param>
+        public static void StartDownload(this IWebBrowser browser, string url)
+        {
+            var host = browser.GetBrowserHost();
+
+            ThrowExceptionIfBrowserHostNull(host);
+
+            host.StartDownload(url);
+        }
+
+        /// <summary>
+        /// See <see cref="IWebBrowser.LoadUrlAsync(string, SynchronizationContext)"/> for details
+        /// </summary>
+        /// <param name="chromiumWebBrowser">ChromiumWebBrowser instance (cannot be null)</param>
+        /// <summary>
+        /// Load the <paramref name="url"/> in the main frame of the browser
+        /// </summary>
+        /// <param name="url">url to load</param>
+        /// <param name="ctx">SynchronizationContext to execute the continuation on, if null then the ThreadPool will be used.</param>
+        /// <returns>See <see cref="IWebBrowser.LoadUrlAsync(string, SynchronizationContext)"/> for details</returns>
+        public static Task<LoadUrlAsyncResponse> LoadUrlAsync(IWebBrowser chromiumWebBrowser, string url = null, SynchronizationContext ctx = null)
+        {
+            var tcs = new TaskCompletionSource<LoadUrlAsyncResponse>();
+
+            EventHandler<LoadErrorEventArgs> loadErrorHandler = null;
+            EventHandler<LoadingStateChangedEventArgs> loadingStateChangeHandler = null;
+
+            loadErrorHandler = (sender, args) =>
+            {
+                //Ignore Aborted
+                //Currently invalid SSL certificates which aren't explicitly allowed
+                //end up with CefErrorCode.Aborted, I've created the following PR
+                //in the hopes of getting this fixed.
+                //https://bitbucket.org/chromiumembedded/cef/pull-requests/373
+                if (args.ErrorCode == CefErrorCode.Aborted)
+                {
+                    return;
+                }
+
+                //If LoadError was called then we'll remove both our handlers
+                //as we won't need to capture LoadingStateChanged, we know there
+                //was an error
+                chromiumWebBrowser.LoadError -= loadErrorHandler;
+                chromiumWebBrowser.LoadingStateChanged -= loadingStateChangeHandler;
+
+                if (ctx == null)
+                {
+                    //Ensure our continuation is executed on the ThreadPool
+                    //For the .Net Core implementation we could use
+                    //TaskCreationOptions.RunContinuationsAsynchronously
+                    tcs.TrySetResultAsync(new LoadUrlAsyncResponse(args.ErrorCode, -1));
+                }
+                else
+                {
+                    ctx.Post(new SendOrPostCallback((o) =>
+                    {
+                        tcs.TrySetResult(new LoadUrlAsyncResponse(args.ErrorCode, -1));
+                    }), null);
+                }
+            };
+
+            loadingStateChangeHandler = (sender, args) =>
+            {
+                //Wait for IsLoading = false
+                if (!args.IsLoading)
+                {
+                    //If LoadingStateChanged was called then we'll remove both our handlers
+                    //as LoadError won't be called, our site has loaded with a valid HttpStatusCode
+                    //HttpStatusCodes can still be for example 404, this is considered a successful request,
+                    //the server responded, it just didn't have the page you were after.
+                    chromiumWebBrowser.LoadError -= loadErrorHandler;
+                    chromiumWebBrowser.LoadingStateChanged -= loadingStateChangeHandler;
+
+                    var host = args.Browser.GetHost();
+
+                    var navEntry = host?.GetVisibleNavigationEntry();
+
+                    int statusCode = navEntry?.HttpStatusCode ?? -1;
+
+                    //By default 0 is some sort of error, we map that to -1
+                    //so that it's clearer that something failed.
+                    if (statusCode == 0)
+                    {
+                        statusCode = -1;
+                    }
+
+                    if (ctx == null)
+                    {
+                        //Ensure our continuation is executed on the ThreadPool
+                        //For the .Net Core implementation we could use
+                        //TaskCreationOptions.RunContinuationsAsynchronously
+                        tcs.TrySetResultAsync(new LoadUrlAsyncResponse(CefErrorCode.None, statusCode));
+                    }
+                    else
+                    {
+                        ctx.Post(new SendOrPostCallback((o) =>
+                        {
+                            tcs.TrySetResult(new LoadUrlAsyncResponse(CefErrorCode.None, statusCode));
+                        }), null);
+                    }
+                }
+            };
+
+            chromiumWebBrowser.LoadError += loadErrorHandler;
+            chromiumWebBrowser.LoadingStateChanged += loadingStateChangeHandler;
+
+            if (!string.IsNullOrEmpty(url))
+            {
+                chromiumWebBrowser.Load(url);
+            }
+
+            return tcs.Task;
+        }
+
+        /// <summary>
         /// Execute some Javascript code in the context of this WebBrowser. As the method name implies, the script will be executed
         /// asynchronously, and the method therefore returns before the script has actually been executed. This simple helper extension
         /// will encapsulate params in single quotes (unless int, uint, etc)
@@ -332,7 +451,6 @@ namespace CefSharp
         /// <param name="url">url to load</param>
         /// <param name="postDataBytes">post data as byte array</param>
         /// <param name="contentType">(Optional) if set the Content-Type header will be set</param>
-        [Obsolete("This method will be removed in version 75 as it has become unreliable see https://github.com/cefsharp/CefSharp/issues/2705 for details.")]
         public static void LoadUrlWithPostData(this IWebBrowser browser, string url, byte[] postDataBytes, string contentType = null)
         {
             using (var frame = browser.GetMainFrame())
@@ -571,7 +689,7 @@ namespace CefSharp
         /// </summary>
         /// <exception cref="Exception">Thrown when an exception error condition occurs.</exception>
         /// <param name="browser">The ChromiumWebBrowser instance this method extends.</param>
-        /// <param name="callback">(Optional) If not null it will be executed asnychronously on the CEF IO thread after the manager's
+        /// <param name="callback">(Optional) If not null it will be executed asynchronously on the CEF IO thread after the manager's
         /// storage has been initialized.</param>
         /// <returns>
         /// Cookie Manager.
@@ -1046,7 +1164,7 @@ namespace CefSharp
                     internalJsFunctionName += ".SendEvalScriptResponse";
                 }
             }
-            var promiseHandlerScript = "let innerImmediatelyInvokedFuncExpression = (function() { " + script + " })(); Promise.resolve(innerImmediatelyInvokedFuncExpression).then((val) => " + internalJsFunctionName + "(cefSharpInternalCallbackId, true, val)).catch ((reason) => " + internalJsFunctionName + "(cefSharpInternalCallbackId, false, String(reason))); return 'CefSharpDefEvalScriptRes';";
+            var promiseHandlerScript = "let innerImmediatelyInvokedFuncExpression = (async function() { " + script + " })(); Promise.resolve(innerImmediatelyInvokedFuncExpression).then((val) => " + internalJsFunctionName + "(cefSharpInternalCallbackId, true, val, false)).catch ((reason) => " + internalJsFunctionName + "(cefSharpInternalCallbackId, false, String(reason), false)); return 'CefSharpDefEvalScriptRes';";
 
             return promiseHandlerScript;
         }

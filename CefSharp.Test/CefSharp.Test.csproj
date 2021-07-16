@@ -1,7 +1,8 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="12.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <Import Project="..\packages\cef.redist.x86.87.1.11\build\cef.redist.x86.props" Condition="Exists('..\packages\cef.redist.x86.87.1.11\build\cef.redist.x86.props')" />
-  <Import Project="..\packages\cef.redist.x64.87.1.11\build\cef.redist.x64.props" Condition="Exists('..\packages\cef.redist.x64.87.1.11\build\cef.redist.x64.props')" />
+  <Import Project="..\packages\cef.redist.x86.92.0.14\build\cef.redist.x86.props" Condition="Exists('..\packages\cef.redist.x86.92.0.14\build\cef.redist.x86.props')" />
+  <Import Project="..\packages\cef.redist.x64.92.0.14\build\cef.redist.x64.props" Condition="Exists('..\packages\cef.redist.x64.92.0.14\build\cef.redist.x64.props')" />
+  <Import Project="..\packages\Microsoft.Net.Compilers.2.9.0\build\Microsoft.Net.Compilers.props" Condition="Exists('..\packages\Microsoft.Net.Compilers.2.9.0\build\Microsoft.Net.Compilers.props')" />
   <Import Project="..\packages\xunit.runner.visualstudio.2.4.1\build\net20\xunit.runner.visualstudio.props" Condition="Exists('..\packages\xunit.runner.visualstudio.2.4.1\build\net20\xunit.runner.visualstudio.props')" />
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
@@ -13,13 +14,9 @@
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>CefSharp.Test</RootNamespace>
     <AssemblyName>CefSharp.Test</AssemblyName>
-    <TargetFrameworkVersion>v4.6.2</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
-    <FileUpgradeFlags>
-    </FileUpgradeFlags>
-    <UpgradeBackupLocation>
-    </UpgradeBackupLocation>
-    <OldToolsVersion>3.5</OldToolsVersion>
+    <LangVersion>7.3</LangVersion>
     <TargetFrameworkProfile>Client</TargetFrameworkProfile>
     <TargetFrameworkProfile />
     <NuGetPackageImportStamp>
@@ -154,17 +151,21 @@
   <ItemGroup>
     <Compile Include="BindingRedirectAssemblyResolver.cs" />
     <Compile Include="DevTools\DevToolsClientFacts.cs" />
+    <Compile Include="DevTools\HeadersFacts.cs" />
     <Compile Include="Framework\BinderFacts.cs" />
     <Compile Include="Framework\AsyncExtensionFacts.cs" />
     <Compile Include="Framework\ConcurrentMethodRunnerQueueFacts.cs" />
     <Compile Include="Framework\CamelCaseNamingConverterFacts.cs" />
     <Compile Include="Framework\LegacyCamelCaseJavascriptNameConverterFacts.cs" />
+    <Compile Include="Framework\MethodRunnerQueueFacts.cs" />
     <Compile Include="Framework\MimeTypeMappingFacts.cs" />
     <Compile Include="Framework\PathCheckFacts.cs" />
     <Compile Include="Framework\RequestContextBuilderFacts.cs" />
     <Compile Include="Framework\RequestContextExtensionFacts.cs" />
+    <Compile Include="Framework\RequestContextFacts.cs" />
     <Compile Include="Framework\TestMemberInfo.cs" />
     <Compile Include="JavascriptBinding\IntegrationTestFacts.cs" />
+    <Compile Include="JavascriptBinding\JavaScriptObjectRepositoryFacts.cs" />
     <Compile Include="OffScreen\OffScreenBrowserBasicFacts.cs" />
     <Compile Include="CefSharpXunitTestFramework.cs" />
     <Compile Include="CefSharpFixture.cs" />
@@ -177,10 +178,13 @@
     <Compile Include="Wpf\WpfBrowserBasicFacts.cs" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\CefSharp.Core\CefSharp.Core.vcxproj">
+    <ProjectReference Include="..\CefSharp.Core.Runtime\CefSharp.Core.Runtime.vcxproj">
       <Project>{7b495581-2271-4f41-9476-acb86e8c864f}</Project>
+      <Name>CefSharp.Core.Runtime</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\CefSharp.Core\CefSharp.Core.csproj">
+      <Project>{b760b002-d277-4525-9f63-67ed2065034a}</Project>
       <Name>CefSharp.Core</Name>
-      <Private>True</Private>
     </ProjectReference>
     <ProjectReference Include="..\CefSharp.Example\CefSharp.Example.csproj">
       <Project>{a4394e7b-1155-43a6-989e-8ab72dddc9e4}</Project>

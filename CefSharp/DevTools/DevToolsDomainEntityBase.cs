@@ -3,6 +3,7 @@
 // Use of this source code is governed by a BSD-style license that can be found in the LICENSE file.
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -10,10 +11,41 @@ using System.Runtime.Serialization;
 
 namespace CefSharp.DevTools
 {
+    /// <summary>
+    /// Common Base class for DevTools Domain Model classes
+    /// </summary>
     [DataContract]
     public abstract class DevToolsDomainEntityBase
     {
-        public static object StringToEnum(Type enumType, string input)
+#if NETCOREAPP
+        internal static string EnumToString(Enum e)
+        {
+            var memberInfo = e.GetType().GetMember(e.ToString()).FirstOrDefault();
+
+            var enumMemberAttribute = (System.Text.Json.Serialization.JsonPropertyNameAttribute)Attribute.GetCustomAttribute(memberInfo, typeof(System.Text.Json.Serialization.JsonPropertyNameAttribute), false);
+
+            return enumMemberAttribute.Name;
+        }
+
+        internal static string EnumToString(Array enumArray)
+        {
+            var returnValue = "[";
+
+            foreach (var e in enumArray)
+            {
+                var memberInfo = e.GetType().GetMember(e.ToString()).FirstOrDefault();
+
+                var enumMemberAttribute = (System.Text.Json.Serialization.JsonPropertyNameAttribute)Attribute.GetCustomAttribute(memberInfo, typeof(System.Text.Json.Serialization.JsonPropertyNameAttribute), false);
+
+                returnValue += enumMemberAttribute.Name + ",";
+            }
+
+            returnValue += returnValue.Substring(0, returnValue.Length - 1) + "]";
+
+            return returnValue;
+        }
+#else
+        internal static object StringToEnum(Type enumType, string input)
         {
             if (enumType.IsArray)
             {
@@ -66,7 +98,7 @@ namespace CefSharp.DevTools
             return (Enum.GetValues(enumType).GetValue(0));
         }
 
-        public static string EnumToString(Enum e)
+        internal static string EnumToString(Enum e)
         {
             var memberInfo = e.GetType().GetMember(e.ToString()).FirstOrDefault();
 
@@ -75,7 +107,7 @@ namespace CefSharp.DevTools
             return enumMemberAttribute.Value;
         }
 
-        public static string EnumToString(Array enumArray)
+        internal static string EnumToString(Array enumArray)
         {
             var returnValue = "[";
 
@@ -92,7 +124,81 @@ namespace CefSharp.DevTools
 
             return returnValue;
         }
+#endif
 
+
+
+#if NETCOREAPP
+        public IDictionary<string, object> ToDictionary()
+        {
+            var dict = new Dictionary<string, object>();
+
+            var properties = GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
+
+            foreach (var prop in properties)
+            {
+                var propertyAttribute = (System.Text.Json.Serialization.JsonPropertyNameAttribute)Attribute.GetCustomAttribute(prop, typeof(System.Text.Json.Serialization.JsonPropertyNameAttribute), false);
+
+                //Only add members that have JsonPropertyNameAttribute
+                if (propertyAttribute == null)
+                {
+                    continue;
+                }
+
+                var propertyName = propertyAttribute.Name;
+                var propertyRequired = Attribute.IsDefined(prop, typeof(System.Diagnostics.CodeAnalysis.DisallowNullAttribute));
+                
+                var propertyValue = prop.GetValue(this);
+
+                if (propertyRequired && propertyValue == null)
+                {
+                    throw new DevToolsClientException(prop.Name + " is required");
+                }
+
+                //Not required and value null, don't add to dictionary
+                if (propertyValue == null)
+                {
+                    continue;
+                }
+
+                var propertyValueType = propertyValue.GetType();
+
+                if (typeof(DevToolsDomainEntityBase).IsAssignableFrom(propertyValueType))
+                {
+                    propertyValue = ((DevToolsDomainEntityBase)(propertyValue)).ToDictionary();
+                }
+                else if (prop.PropertyType.IsGenericType && prop.PropertyType.GetGenericTypeDefinition() == typeof(IList<>) && typeof(DevToolsDomainEntityBase).IsAssignableFrom(prop.PropertyType.GetGenericArguments()[0]))
+                {
+                    var values = new List<IDictionary<string, object>>();
+                    foreach (var value in (IEnumerable)propertyValue)
+                    {
+                        values.Add(((DevToolsDomainEntityBase)value).ToDictionary());
+                    }
+                    propertyValue = values;
+                }
+                else if (propertyValueType.IsEnum)
+                {
+                    propertyValue = EnumToString((Enum)propertyValue);
+                }
+                else if (propertyValueType.IsGenericType)
+                {
+                    var nullableType = Nullable.GetUnderlyingType(propertyValueType);
+                    if(nullableType != null && nullableType.IsEnum)
+                    {
+                        propertyValue = EnumToString((Enum)propertyValue);
+                    }
+                }
+                else if (propertyValueType.IsArray && propertyValueType.GetElementType().IsEnum)
+                {
+                    propertyValue = EnumToString((Array)propertyValue);
+                }
+
+                dict.Add(propertyName, propertyValue);
+            }
+
+            return dict;
+        }
+#else
         public IDictionary<string, object> ToDictionary()
         {
             var dict = new Dictionary<string, object>();
@@ -130,11 +236,21 @@ namespace CefSharp.DevTools
                 {
                     propertyValue = ((DevToolsDomainEntityBase)(propertyValue)).ToDictionary();
                 }
+                else if (prop.PropertyType.IsGenericType && prop.PropertyType.GetGenericTypeDefinition() == typeof(IList<>) && typeof(DevToolsDomainEntityBase).IsAssignableFrom(prop.PropertyType.GetGenericArguments()[0]))
+                {
+                    var values = new List<IDictionary<string, object>>();
+                    foreach (var value in (IEnumerable)propertyValue)
+                    {
+                        values.Add(((DevToolsDomainEntityBase)value).ToDictionary());
+                    }
+                    propertyValue = values;
+                }
 
                 dict.Add(propertyName, propertyValue);
             }
 
             return dict;
         }
+#endif
     }
 }

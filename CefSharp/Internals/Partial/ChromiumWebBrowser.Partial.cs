@@ -5,6 +5,7 @@
 using System;
 using System.ComponentModel;
 using System.Threading;
+using System.Threading.Tasks;
 using CefSharp.Internals;
 
 #if OFFSCREEN
@@ -24,6 +25,8 @@ namespace CefSharp.WinForms
             "The undelying CefBrowser instance is not yet initialized. Use the IsBrowserInitializedChanged event and check " +
             "the IsBrowserInitialized property to determine when the browser has been initialized.";
 
+        private const string CefInitializeFailedErrorMessage = "Cef.Initialize() failed.Check the log file see https://github.com/cefsharp/CefSharp/wiki/Trouble-Shooting#log-file for details.";
+
         /// <summary>
         /// Used as workaround for issue https://github.com/cefsharp/CefSharp/issues/3021
         /// </summary>
@@ -33,6 +36,17 @@ namespace CefSharp.WinForms
         /// The browser initialized - boolean represented as 0 (false) and 1(true) as we use Interlocker to increment/reset
         /// </summary>
         private int browserInitialized;
+
+        /// <summary>
+        /// The value for disposal, if it's 1 (one) then this instance is either disposed
+        /// or in the process of getting disposed
+        /// </summary>
+        private int disposeSignaled;
+
+        /// <summary>
+        /// The browser
+        /// </summary>
+        private IBrowser browser;
 
         /// <summary>
         /// A flag that indicates if you can execute javascript in the main frame.
@@ -224,7 +238,8 @@ namespace CefSharp.WinForms
 
         void IWebBrowserInternal.SetJavascriptMessageReceived(JavascriptMessageReceivedEventArgs args)
         {
-            JavascriptMessageReceived?.Invoke(this, args);
+            //Run the event on the ThreadPool (rather than the CEF Thread we are currently on).
+            Task.Run(() => JavascriptMessageReceived?.Invoke(this, args));
         }
 
         /// <summary>
@@ -287,8 +302,37 @@ namespace CefSharp.WinForms
             get { return managedCefBrowserAdapter; }
         }
 
-        private void SetHandlersToNullExceptLifeSpan()
+        void IWebBrowserInternal.OnAfterBrowserCreated(IBrowser browser)
         {
+            if (IsDisposed || browser.IsDisposed)
+            {
+                return;
+            }
+
+            this.browser = browser;
+            Interlocked.Exchange(ref browserInitialized, 1);
+
+            OnAfterBrowserCreated(browser);
+        }
+
+        /// <inheritdoc/>
+        public Task<LoadUrlAsyncResponse> LoadUrlAsync(string url = null, SynchronizationContext ctx = null)
+        {
+            //LoadUrlAsync is actually a static method so that CefSharp.Wpf.HwndHost can reuse the code
+            //It's not actually an extension method so we can have it included as part of the
+            //IWebBrowser interface
+            return CefSharp.WebBrowserExtensions.LoadUrlAsync(this, url, ctx);
+        }
+
+        partial void OnAfterBrowserCreated(IBrowser browser);
+
+        /// <summary>
+        /// Sets the handler references to null.
+        /// Where required also calls Dispose().
+        /// </summary>
+        private void FreeHandlersExceptLifeSpan()
+        {
+            AudioHandler?.Dispose();
             AudioHandler = null;
             DialogHandler = null;
             FindHandler = null;

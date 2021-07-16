@@ -11,8 +11,27 @@ namespace CefSharp.JavascriptBinding
     /// </summary>
     public class JavascriptBindingSettings : FreezableBase
     {
+        private bool alwaysInterceptAsynchronously;
         private bool legacyBindingEnabled;
         private string jsBindingGlobalObjectName;
+        private bool jsBindingApiEnabled = true;
+
+        /// <summary>
+        /// The Javascript methods that CefSharp provides in relation to JavaScript Binding are
+        /// created using a Global (window) Object. Settings this property allows you to disable
+        /// the creation of this object. Features like EvaluateScriptAsPromiseAsync that rely on
+        /// the creation of this object will no longer function.
+        /// </summary>
+        public bool JavascriptBindingApiEnabled
+        {
+            get { return jsBindingApiEnabled; }
+            set
+            {
+                ThrowIfFrozen();
+
+                jsBindingApiEnabled = value;
+            }
+        }
 
         /// <summary>
         /// The Javascript methods that CefSharp provides in relation to JavaScript Binding are
@@ -61,13 +80,20 @@ namespace CefSharp.JavascriptBinding
         }
 
         /// <summary>
-        /// Default Constructor
+        /// When using an <see cref="CefSharp.ModelBinding.IAsyncMethodInterceptor"/>
+        /// the <see cref="CefSharp.ModelBinding.IAsyncMethodInterceptor.InterceptAsync(System.Func{object[], object}, object[], string)"/>
+        /// method is call for all methods (the default is to call InterceptAsync only for methods that return a Task).
+        /// This only applies when <see cref="BindingOptions.MethodInterceptor"/> is of type <see cref="CefSharp.ModelBinding.IAsyncMethodInterceptor"/>
         /// </summary>
-        public JavascriptBindingSettings()
+        public bool AlwaysInterceptAsynchronously
         {
-            //Default to CefSharpSettings.LegacyJavascriptBindingEnabled
-            //until it's eventually removed
-            LegacyBindingEnabled = CefSharpSettings.LegacyJavascriptBindingEnabled;
+            get { return alwaysInterceptAsynchronously; }
+            set
+            {
+                ThrowIfFrozen();
+
+                alwaysInterceptAsynchronously = value;
+            }
         }
     }
 }
