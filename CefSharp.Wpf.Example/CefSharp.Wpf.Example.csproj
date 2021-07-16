@@ -80,6 +80,7 @@
       <RequiredTargetFramework>3.5</RequiredTargetFramework>
     </Reference>
     <Reference Include="System.Drawing" />
+    <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Xaml" />
     <Reference Include="WindowsBase" />
     <Reference Include="PresentationCore" />
@@ -102,6 +103,7 @@
     <Compile Include="Handlers\MenuHandler.cs" />
     <Compile Include="Handlers\ExperimentalLifespanHandler.cs" />
     <Compile Include="Handlers\WpfBrowserProcessHandler.cs" />
+    <Compile Include="KeyBoardUtilities.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="JavascriptCallbackMainWindow.xaml.cs">
       <DependentUpon>JavascriptCallbackMainWindow.xaml</DependentUpon>

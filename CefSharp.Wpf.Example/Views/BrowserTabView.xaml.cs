@@ -2,9 +2,12 @@
 //
 // Use of this source code is governed by a BSD-style license that can be found in the LICENSE file.
 
+using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -23,6 +26,9 @@ namespace CefSharp.Wpf.Example.Views
     {
         //Store draggable region if we have one - used for hit testing
         private Region region;
+
+        bool usernameDone = false;
+        bool loggedIn = false;
 
         public BrowserTabView()
         {
@@ -184,9 +190,196 @@ namespace CefSharp.Wpf.Example.Views
                 args.Frame.LoadHtml(errorBody, base64Encode: true);
             };
 
+            browser.FrameLoadEnd += Browser_FrameLoadEnd;
+            browser.LoadingStateChanged += Browser_LoadingStateChanged;
+            browser.AddressChanged += Browser_AddressChanged;
+
             CefExample.RegisterTestResources(browser);
 
             browser.JavascriptMessageReceived += OnBrowserJavascriptMessageReceived;
+        }
+
+        private void Browser_AddressChanged(object sender, DependencyPropertyChangedEventArgs e)
+        {
+            if (e.NewValue.ToString().ToLower().Contains("secure.sarsefiling.co.za/app/dashboard/individual"))
+            {
+                loggedIn = true;
+
+                var script = @"
+                    document.getElementsByClassName('top-nav-buttons')[3].click();
+                ";
+                browser.ExecuteScriptAsyncWhenPageLoaded(script);
+                Thread.Sleep(1000);
+                browser.ExecuteScriptAsync(script);
+            }
+
+            if (e.NewValue.ToString().ToLower().Contains("secure.sarsefiling.co.za/app/efdotnet/efdotnet") &&
+                e.OldValue.ToString().ToLower().Contains("secure.sarsefiling.co.za/app/dashboard/individual"))
+            {
+                var script = @"
+                    document.getElementsByClassName('mat-list-item-content')[0].click();
+                ";
+                browser.ExecuteScriptAsyncWhenPageLoaded(script);
+                Thread.Sleep(1000);
+                browser.ExecuteScriptAsync(script);
+
+                script = @"
+                    document.getElementsByClassName('mat-list-item-content')[3].click();
+                ";
+                browser.ExecuteScriptAsyncWhenPageLoaded(script);
+                Thread.Sleep(3000);
+                browser.ExecuteScriptAsync(script);
+                Thread.Sleep(3000);
+
+                script = @"
+                    document.getElementById('anchorFIA').click();
+                ";
+                browser.ExecuteScriptAsyncWhenPageLoaded(script);
+                Thread.Sleep(1000);
+                browser.ExecuteScriptAsync(script);
+            }
+        }
+
+        private void Browser_LoadingStateChanged(object sender, LoadingStateChangedEventArgs e)
+        {
+            //if (browser.CanExecuteJavascriptInMainFrame && usernameDone && loggedIn)
+            //{
+            //    browser.EvaluateScriptAsync("document.getElementsByClassName('top-nav-buttons');[0].click();");
+            //}
+            //if(homeLoaded)
+            //{
+            //    var script = @"
+            //        document.getElementsByClassName('top-nav-buttons')[3].click();
+            //    ";
+            //    browser.ExecuteScriptAsyncWhenPageLoaded(script);
+
+            //    //browser.EvaluateScriptAsync("document.getElementsByClassName('top-nav-buttons');[0].click();");
+            //    //homeLoaded = false;
+            //}
+
+            if (browser.CanExecuteJavascriptInMainFrame && usernameDone && !loggedIn)
+            {
+                browser.EvaluateScriptAsync("document.getElementById('password').click();");
+                browser.EvaluateScriptAsync("document.getElementById('password').focused=true");
+                browser.ExecuteScriptAsync("document.getElementById('password').value=" + '\'' + "FillMeIn!" + '\'');
+                browser.EvaluateScriptAsync("document.getElementById('password').click();");
+
+                Thread.Sleep(100);
+
+                KeyEvent k = new KeyEvent
+                {
+                    WindowsKeyCode = 68,
+                    FocusOnEditableField = true,
+                    IsSystemKey = true,
+                    Type = KeyEventType.Char
+                };
+
+                browser.GetBrowser().GetHost().SendKeyEvent(k);
+                Thread.Sleep(100);
+
+                k = new KeyEvent
+                {
+                    WindowsKeyCode = 8,
+                    FocusOnEditableField = true,
+                    IsSystemKey = true,
+                    Type = KeyEventType.KeyDown
+                };
+                browser.GetBrowser().GetHost().SendKeyEvent(k);
+                Thread.Sleep(100);
+
+                k = new KeyEvent
+                {
+                    WindowsKeyCode = 127,
+                    FocusOnEditableField = true,
+                    IsSystemKey = true,
+                    Type = KeyEventType.Char
+                };
+                browser.GetBrowser().GetHost().SendKeyEvent(k);
+                Thread.Sleep(100);
+
+                var script = @"
+                    document.getElementById('btnLogin').click();
+                ";
+                browser.ExecuteScriptAsyncWhenPageLoaded(script);
+            }
+        }
+
+        private void Browser_FrameLoadEnd(object sender, FrameLoadEndEventArgs e)
+        {
+            //var poo = Convert.ToChar('D');
+
+            //var one = KeyBoardUtilities.GetCharFromKey(Key.NumPad1, false);
+            //var _one = KeyBoardUtilities.GetCharFromKey(Key.D1, false);
+            //var d = KeyBoardUtilities.GetCharFromKey(Key.D, false);
+            //var _d = KeyBoardUtilities.GetCharFromKey(Key.D, true);
+
+            //if (homeLoaded)
+            //{
+            //    var script = @"
+            //        document.getElementsByClassName('top-nav-buttons')[3].click();
+            //    ";
+            //    browser.ExecuteScriptAsyncWhenPageLoaded(script);
+            //}
+
+            if (e.Url.ToLower().Contains("secure.sarsefiling.co.za/app/login"))
+            {
+                //browser.EvaluateScriptAsync("document.getElementById('username').click();");
+                //browser.ExecuteScriptAsync("document.getElementById('username').value=" + '\'' + "davidroux4214" + '\'');
+
+                browser.EvaluateScriptAsync("document.getElementById('username').click();");
+                browser.EvaluateScriptAsync("document.getElementById('username').focused=true");
+                browser.ExecuteScriptAsync("document.getElementById('username').value=" + '\'' + "davidroux4214" + '\'');
+                browser.EvaluateScriptAsync("document.getElementById('username').click();");
+
+                Thread.Sleep(100);
+
+                KeyEvent k = new KeyEvent
+                {
+                    WindowsKeyCode = 68,
+                    FocusOnEditableField = true,
+                    IsSystemKey = true,
+                    Type = KeyEventType.Char
+                };
+
+                browser.GetBrowser().GetHost().SendKeyEvent(k);
+                Thread.Sleep(100);
+
+                k = new KeyEvent
+                {
+                    WindowsKeyCode = 8,
+                    FocusOnEditableField = true,
+                    IsSystemKey = true,
+                    Type = KeyEventType.KeyDown
+                };
+                browser.GetBrowser().GetHost().SendKeyEvent(k);
+                Thread.Sleep(100);
+
+                k = new KeyEvent
+                {
+                    WindowsKeyCode = 127,
+                    FocusOnEditableField = true,
+                    IsSystemKey = true,
+                    Type = KeyEventType.Char
+                };
+                browser.GetBrowser().GetHost().SendKeyEvent(k);
+
+                //k = new KeyEvent
+                //{
+                //    WindowsKeyCode = 13, // enter
+                //    FocusOnEditableField = true,
+                //    IsSystemKey = true,
+                //    Type = KeyEventType.Char
+                //};
+
+                //browser.GetBrowser().GetHost().SendKeyEvent(k);
+
+                var script = @"
+                    document.getElementById('btnLogin').click();
+                ";
+                browser.ExecuteScriptAsyncWhenPageLoaded(script);
+
+                usernameDone = true;
+            }
         }
 
         private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)

@@ -79,7 +79,8 @@ namespace CefSharp.Wpf.Example
 
         private void MainWindowLoaded(object sender, RoutedEventArgs e)
         {
-            CreateNewTab(CefExample.DefaultUrl, true);
+            CreateNewTab("https://secure.sarsefiling.co.za/app/login", true);
+            //CreateNewTab(CefExample.DefaultUrl, true);
         }
 
         private void CreateNewTab(string url = DefaultUrlForAddedTabs, bool showSideBar = false, bool legacyBindingEnabled = false)
